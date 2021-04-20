@@ -1,6 +1,6 @@
 name := "scala2021"
 
-Compile/mainClass := Some("scala2021.${userlogin}.task01.${ObjectName}")
+Compile/mainClass := Some("scala2021.ayafimau.task01.Main")
 
 scalaVersion := "2.13.5"
 
