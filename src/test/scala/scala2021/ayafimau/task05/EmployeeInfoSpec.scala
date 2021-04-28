@@ -50,15 +50,15 @@ class EmployeeInfoSpec extends AsyncFlatSpec with TableDrivenPropertyChecks with
     }
   }
 
-  "findManagerNameOrErrorAsync" should "return expected values in both versions" in {
+  "findManagerNameOrErrorAsync" should "return expected values" in {
     // Act & Assert
     forAll(employeeToManagerOrError) { (employee: String, managerOrError: Either[String, String]) =>
-      `findManagerNameOrErrorAsync original version`(employee) map { result => assert(result === managerOrError) }
-      `findManagerNameOrErrorAsync code de-dupe version`(employee) map { result => assert(result === managerOrError) }
+      findManagerNameOrErrorAsync(employee) map { result => assert(result === managerOrError) }
     }
   }
 
   "findEmployeeManagers" should "return all expected values" in {
+    val notFound = "Not Found"
     // Arrange
     val expected = List(
       Info("Steve","Marketing","Steve"),
@@ -66,9 +66,9 @@ class EmployeeInfoSpec extends AsyncFlatSpec with TableDrivenPropertyChecks with
         Info("Jane","Marketing","Steve"),
         Info("Samuel","Sales","Igor"),
         Info("Igor","Sales","Igor"),
-        Info("Naveen","IT","Not Found"),
-        Info("Christy","Not Found","Not Found"),
-        Info("Megan","Research","Not Found")
+        Info("Naveen","IT",notFound),
+        Info("Christy",notFound,notFound),
+        Info("Megan","Research",notFound)
     )
     // Act & Assert
     assert(findEmployeeManagers === expected)

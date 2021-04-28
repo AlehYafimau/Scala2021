@@ -1,9 +1,7 @@
 package scala2021.ayafimau.task05
 
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent._
-import ExecutionContext.Implicits.global
-import scala.concurrent.duration.Duration
-import scala.util.{Failure, Success}
 
 object Main extends App {
 
@@ -25,7 +23,18 @@ object Main extends App {
 
   // Найти имя менеджера по имени сотрудника, в случае ошибки в данных - указать что именно не так
   def findManagerNameOrError(employee: String): Either[String, String] = {
-    val possibleManager = for {
+    val (_, _, possibleManager) = findInfo(employee)
+    possibleManager
+  }
+
+  // Найти имя менеджера по имени сотрудника, в случае ошибки в данных - указать что именно не так и сделать все это асинхронно
+  def findManagerNameOrErrorAsync(employee: String): Future[Either[String, String]] = {
+    Future(findManagerNameOrError(employee))
+  }
+
+  // returns (employeeName, Either department name or exception,  Either manager name or exception)
+  def findInfo(employee: String): (String, Either[String, String], Either[String, String]) = {
+    val possibleDepartment = for {
       empl <- employees.find(_.name == employee) match {
         case Some(x) => Right(x)
         case None => Left(s"Employee with name $employee is not present in the repository")
@@ -34,113 +43,25 @@ object Main extends App {
         case Some(x) => Right(x)
         case None => Left(s"Department with id ${empl.departmentId} (for employee $employee) is not present in the repository")
       }
-      manager <- managers.find(_.department == department.name) match {
-        case Some(x) => Right(x)
-        case None => Left(s"Manager for department ${department.name} (department id =  ${department.id}) is not present in the repository")
-      }
-      managerAsEmpl <- employees.find(_.id == manager.employeeId) match {
-        case Some(x) => Right(x)
-        case None => Left(s"Employee with id ${manager.employeeId} who should be manager for department ${department.name} is not present in the repository")
-      }
-    } yield managerAsEmpl.name
-
-    possibleManager
-  }
-
-  // Найти имя менеджера по имени сотрудника, в случае ошибки в данных - указать что именно не так и сделать все это асинхронно
-  def `findManagerNameOrErrorAsync original version`(employee: String): Future[Either[String, String]] = {
-    val possibleManager = for {
-      empl <- Future {
-        employees.find(_.name == employee) match {
-          case Some(x) => x
-          case None => throw new Exception(s"Employee with name $employee is not present in the repository")
-        }
-      }
-      department <- Future {
-        departments.find(_.id == empl.departmentId) match {
-          case Some(x) => x
-          case None => throw new Exception(s"Department with id ${empl.departmentId} (for employee $employee) is not present in the repository")
-        }
-      }
-      manager <- Future {
-        managers.find(_.department == department.name) match {
-          case Some(x) => x
-          case None => throw new Exception(s"Manager for department ${department.name} (department id =  ${department.id}) is not present in the repository")
-        }
-      }
-      managerAsEmpl <- Future {
-        employees.find(_.id == manager.employeeId) match {
-          case Some(x) => x
-          case None => throw new Exception(s"Employee with id ${manager.employeeId} who should be manager for department ${department.name} is not present in the repository")
-        }
-      }
-    } yield managerAsEmpl.name
-
-    possibleManager.transformWith {
-      case Success(result) =>
-        Future(Right(result))
-      case Failure(exception) =>
-        Future(Left(exception.getMessage))
-    }
-  }
-
-  // Найти имя менеджера по имени сотрудника, в случае ошибки в данных - указать что именно не так и сделать все это асинхронно
-  def `findManagerNameOrErrorAsync code de-dupe version`(employee: String): Future[Either[String, String]] = {
-    findInfoAsync(employee) transformWith {
-      case Success(result) =>
-        result match {
-          case (_, _, Right(managerName)) => Future(Right(managerName))
-          case (_, _, Left(managerException)) => Future(Left(managerException))
-        }
-      case Failure(exception) =>
-        Future(Left(exception.getMessage))
-    }
-  }
-
-  // returns (employeeName, Either department name or exception,  Either manager name or exception)
-  def findInfoAsync(employee: String): Future[(String, Either[String, String], Either[String, String])] = {
-    val possibleDepartment = for {
-      empl <- Future {
-        employees.find(_.name == employee) match {
-          case Some(x) => x
-          case None => throw new Exception(s"Employee with name $employee is not present in the repository")
-        }
-      }
-      department <- Future {
-        departments.find(_.id == empl.departmentId) match {
-          case Some(x) => x
-          case None => throw new Exception(s"Department with id ${empl.departmentId} (for employee $employee) is not present in the repository")
-        }
-      }
     } yield department
-
-    val result = possibleDepartment.transformWith {
-      case Failure(departmentException) =>
-        Future((employee, Left(departmentException.getMessage), Left(departmentException.getMessage)))
-      case Success(resultDepartment) =>
+    possibleDepartment match {
+      case Left(error) => (employee, Left(error), Left(error))
+      case Right(department) =>
         val possibleManager = for {
-          manager <- Future {
-            managers.find(_.department == resultDepartment.name) match {
-              case Some(x) => x
-              case None => throw new Exception(s"Manager for department ${resultDepartment.name} (department id =  ${resultDepartment.id}) is not present in the repository")
-            }
+          manager <- managers.find(_.department == department.name) match {
+            case Some(x) => Right(x)
+            case None => Left(s"Manager for department ${department.name} (department id =  ${department.id}) is not present in the repository")
           }
-          managerAsEmpl <- Future {
-            employees.find(_.id == manager.employeeId) match {
-              case Some(x) => x
-              case None => throw new Exception(s"Employee with id ${manager.employeeId} who should be manager for department ${resultDepartment.name} is not present in the repository")
-            }
+          managerAsEmpl <- employees.find(_.id == manager.employeeId) match {
+            case Some(x) => Right(x)
+            case None => Left(s"Employee with id ${manager.employeeId} who should be manager for department ${department.name} is not present in the repository")
           }
         } yield managerAsEmpl.name
-
-        possibleManager.transformWith {
-          case Failure(managerException) =>
-            Future((employee, Right(resultDepartment.name), Left(managerException.getMessage)))
-          case Success(result) =>
-            Future((employee, Right(resultDepartment.name), Right(result)))
+        possibleManager match {
+          case Left(error) => (employee, Right(department.name), Left(error))
+          case Right(managerName) => (employee, Right(department.name), Right(managerName))
         }
     }
-    result
   }
 
   // вывести список всех сотрудников, вместе с именем департамента и именем менеджера, если департамента или менеджера нет то использовать константу "Not Found"
@@ -148,20 +69,23 @@ object Main extends App {
     val notFound = "Not Found"
 
     val employeeNames = employees.map(_.name)
-
-    val infoListFuture = Future.traverse(employeeNames)(findInfoAsync)
-    val infoList = Await.result(infoListFuture, Duration.Inf)
+    val infoList = employeeNames.map(findInfo)
 
     infoList.map {
       case (name, Left(_), Left(_)) => Info(name, notFound, notFound)
       case (name, Right(department), Left(_)) => Info(name, department, notFound)
       case (name, Right(department), Right(manager)) => Info(name, department, manager)
+      // below case should not be present by logic, just to prevent compiler warning for non-exhaustive match:
+      case (name, Left(_), Right(manager)) => Info(name, notFound, manager)
     }
   }
 
   case class Employee(id: Int, name: String, departmentId: Int)
+
   case class Department(id: Int, name: String)
+
   case class Manager(department: String, employeeId: Int)
+
   case class Info(employee: String, department: String, manager: String)
 
   private def defineEmployees = {
