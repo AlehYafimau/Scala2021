@@ -1,11 +1,8 @@
 package scala2021.ayafimau.task06
 
-import scala2021.ayafimau.task06.Main.Sexes.{Female, Male, Sex}
-
-import java.time.{Instant, LocalDateTime}
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, Future}
+import scala.concurrent.Future
+import scala.util.{Failure, Success}
 
 object Main extends App {
 
@@ -24,93 +21,110 @@ object Main extends App {
   println("All sequential:")
   testUsers.map(x => (x.name, x.validateSeq())).map(println)
   println("All in parallel:")
-  testUsers.map(x => (x.name, x.validateParallel())).map(println)
+  testUsers.map(x => x.validateParallel onComplete {
+    case Success(result) => println(x.name, result)
+  })
 
   case class User(name: String, age: Int, email: String, sex: Sex, height: Double) {
 
-    def validateUntilFirst(): Option[(String, Instant)] = {
-
-      validateName()
-        .orElse(validateAge())
-        .orElse(validateEmail())
-        .orElse(validateSexVsHeight())
+    def validateUntilFirst(): Either[String, User] = {
+      for {
+        _ <- validateName()
+        _ <- validateAge()
+        _ <- validateEmail()
+        user <- validateSexVsHeight()
+      } yield user
     }
 
-    def validateSeq(): List[(String, Instant)] = {
-      validateName() ++: validateAge() ++: validateEmail() ++: validateSexVsHeight() ++: List()
+    def validateSeq(): Either[List[String], User] = {
+      val validationResults = List(validateName(), validateAge(), validateEmail(), validateSexVsHeight())
+        .filter(_.isLeft)
+      validationResults match {
+        case List() => Right(this)
+        case errors => Left(errors.flatMap(_.left.toOption))
+      }
     }
 
-    def validateParallel(): List[(String, Instant)] = {
+    def validateParallel(): Future[Either[List[String], User]] = {
       val validateNameFuture = Future(validateName())
       val validateAgeFuture = Future(validateAge())
       val validateEmailFuture = Future(validateEmail())
       val validateSexVsHeightFuture = Future(validateSexVsHeight())
 
-      val nameValidation = Await.result(validateNameFuture, Duration.Inf)
-      val ageValidation = Await.result(validateAgeFuture, Duration.Inf)
-      val emailValidation = Await.result(validateEmailFuture, Duration.Inf)
-      val sexVsHeightValidation = Await.result(validateSexVsHeightFuture, Duration.Inf)
-      List(nameValidation, ageValidation, emailValidation, sexVsHeightValidation).flatten
+      val validationResults = for {
+        nameValidation <- validateNameFuture
+        ageValidation <- validateAgeFuture
+        emailValidation <- validateEmailFuture
+        sexVsHeightValidation <- validateSexVsHeightFuture
+      } yield List(nameValidation, ageValidation, emailValidation, sexVsHeightValidation)
+
+      validationResults.transformWith {
+        case Success(results) =>
+          val validationErrors = results.filter(_.isLeft)
+          validationErrors match {
+            case List() => Future(Right(this))
+            case errors => Future(Left(errors.flatMap(_.left.toOption)))
+          }
+        case Failure(error) => Future.failed(error)
+      }
     }
 
-    private def validateName(): Option[(String, Instant)] = {
-      Thread.sleep(300)
-      val time = Instant.now()
+    private def validateName(): Either[String, User] = {
       name match {
-        case null => Some("Name is null.", time)
-        case "" => Some("Name is an empty string.", time)
+        case null => Left("Name is null.")
+        case "" => Left("Name is an empty string.")
         case _ =>
           val leftOver = name.toCharArray.dropWhile(c => ('a' to 'z' contains c) || ('A' to 'Z' contains c))
           leftOver match {
-            case Array() => None
-            case suffix => Some(s"Name contains non-Latin character: '${suffix(0)}'", time)
+            case Array() => Right(this)
+            case suffix => Left(s"Name contains non-Latin character: '${suffix(0)}'")
           }
       }
     }
 
-    private def validateAge(): Option[(String, Instant)] = {
-      Thread.sleep(300)
-      val time = Instant.now()
+    private def validateAge(): Either[String, User] = {
       age match {
-        case x if x <= 0 => Some("Age must be greater than zero", time)
-        case x if x >= 100 => Some("Age must be less than 100", time)
-        case _ => None
+        case x if x <= 0 => Left("Age must be greater than zero")
+        case x if x >= 100 => Left("Age must be less than 100")
+        case _ => Right(this)
       }
     }
 
     //W3C recommendation: http://www.w3.org/TR/html5/forms.html#valid-e-mail-address
     private val emailRegex = """^[a-zA-Z0-9\.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$""".r
 
-    private def validateEmail(): Option[(String, Instant)] = {
-      Thread.sleep(300)
-      val time = Instant.now()
+    private def validateEmail(): Either[String, User] = {
       email match {
-        case null => Some("Email cannot be null", time)
-        case e if e.isEmpty => None // empty emails are allowed by problem statement
-        case e if e.trim.isEmpty => Some("Email cannot consist of whitespace", time)
-        case e if emailRegex.findFirstMatchIn(e).isDefined => None
-        case _ => Some("Email is in an incorrect/non-standard format", time)
+        case null => Left("Email cannot be null")
+        case e if e.isEmpty => Right(this) // empty emails are allowed by problem statement
+        case e if e.trim.isEmpty => Left("Email cannot consist of whitespace")
+        case e if emailRegex.findFirstMatchIn(e).isDefined => Right(this)
+        case _ => Left("Email is in an incorrect/non-standard format")
       }
     }
 
-    private def validateSexVsHeight(): Option[(String, Instant)] = {
-      Thread.sleep(300)
-      val time = Instant.now()
+    private def validateSexVsHeight(): Either[String, User] = {
       sex match {
-        case Female => None
+        case Female => Right(this)
         case Male =>
           height match {
-            case x if x <= 100 => Some("Male should have height greater than 100", time)
-            case _ => None
+            case x if x <= 100 => Left("Male should have height greater than 100")
+            case _ => Right(this)
           }
       }
     }
   }
 
-  object Sexes extends Enumeration {
-    type Sex = Value
+  sealed trait Sex {
+    def name: String
+  }
 
-    val Male, Female = Value
+  case object Male extends Sex {
+    val name = "Male"
+  }
+
+  case object Female extends Sex {
+    val name = "Female"
   }
 
 }
