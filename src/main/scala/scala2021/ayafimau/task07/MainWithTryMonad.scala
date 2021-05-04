@@ -63,10 +63,7 @@ object MainWithTryMonad extends App {
         result.get
     }
 
-    executionResult match {
-      case Success(result) => result
-      case Failure(e) => throw e
-    }
+    executionResult.get
   }
 
   case class Connection(port: Int) {
