@@ -13,13 +13,14 @@ object Main extends App {
 
     def apply(currency: Currency): Money = {
       // NOTE: toString is surprisingly a recommended method for converting Double to BigDecimal (due to rounding / precision)
+      // NOTE:  we allow even negative values for money, since it might be applicable in financial mathematics
       Money(BigDecimal(x.toString), currency)
     }
   }
 
   case class Money(sum: BigDecimal, currency: Currency) {
 
-    // operator "+" defaults to USD conversion as the base currency,  may be discussed as per requirements
+    // operator "+" defaults to USD conversion (coercion) as the base currency,  may be discussed as per requirements
     def +(that: Money): Money = Money(to(USD) + that.to(USD), USD)
 
     def to(currencyTo: Currency): Double = {
