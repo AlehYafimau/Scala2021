@@ -19,7 +19,7 @@ object Main extends App {
 
   case class Money(sum: BigDecimal, currency: Currency) {
 
-    // default operator + to USD conversion as the vase currency,  may be discussed as per requirements
+    // operator "+" defaults to USD conversion as the base currency,  may be discussed as per requirements
     def +(that: Money): Money = Money(to(USD) + that.to(USD), USD)
 
     def to(currencyTo: Currency): Double = {
